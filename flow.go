@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"sync"
 )
 
@@ -89,6 +91,39 @@ func New() *Flow {
 		nodes: map[string]*node{},
 		data:  map[string][]byte{},
 	}
+}
+
+func (fl *Flow) Decode(r io.Reader) error {
+	pf := persistFlow{}
+	err := pf.Decode(r)
+	if err != nil {
+		return err
+	}
+	fl.data = pf.Data
+	for key, pn := range pf.Nodes {
+		n, exists := fl.nodes[key]
+		if !exists {
+			return errors.New("persisted nodes corrupted")
+		}
+		n.outputs = pn.Outputs
+		n.err = fmt.Errorf(pn.Err)
+		n.state = pn.State
+	}
+	return nil
+}
+
+func (fl *Flow) Encode(w io.Writer) error {
+	pf := persistFlow{}
+	pf.Data = fl.data
+	pf.Nodes = map[string]*persistNode{}
+	for key, node := range fl.nodes {
+		pf.Nodes[key] = &persistNode{
+			Outputs: node.outputs,
+			State:   node.state,
+			Err:     node.err.Error(),
+		}
+	}
+	return pf.Encode(w)
 }
 
 func (fl *Flow) Node(key string, deps []string, fn NodeFunc) {
