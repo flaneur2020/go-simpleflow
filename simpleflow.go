@@ -9,7 +9,7 @@ type NodeFunc func(context.Context, RunningNode) error
 
 type RunningNode interface {
 	Key() string
-	Input(key string) interface{}
+	Input(key string) (interface{}, error)
 	Output(key string, d interface{})
 }
 
@@ -43,12 +43,12 @@ func (n *node) Key() string {
 	return n.key
 }
 
-func (n *node) Input(key string) interface{} {
+func (n *node) Input(key string) (interface{}, error) {
 	n.flow.mu.Lock()
 	defer n.flow.mu.Unlock()
 
 	d, _ := n.flow.data[key]
-	return d
+	return d, nil
 }
 
 func (n *node) Output(key string, d interface{}) {
@@ -106,11 +106,6 @@ func (fl *Flow) Start(ctx context.Context, args map[string]interface{}) []string
 	return executedKeys
 }
 
-func (fl *Flow) Get(key string) interface{} {
-	d, _ := fl.data[key]
-	return d
-}
-
 func (fl *Flow) executeFunc(ctx context.Context, key string) {
 	n, exists := fl.nodes[key]
 	if !exists || n.completed() {
@@ -127,6 +122,11 @@ func (fl *Flow) executeFunc(ctx context.Context, key string) {
 
 func (fl *Flow) EOF() bool {
 	return len(fl.executableKeys()) == 0
+}
+
+func (fl *Flow) Data(key string) (interface{}, bool) {
+	d, exists := fl.data[key]
+	return d, exists
 }
 
 func (fl *Flow) Step(ctx context.Context) []string {

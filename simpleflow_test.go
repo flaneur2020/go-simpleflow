@@ -72,7 +72,7 @@ func Test_executableKeys(t *testing.T) {
 	})
 
 	fl.Node("dispatch-artifact", []string{"find-artifact"}, func(ctx context.Context, n RunningNode) error {
-		artifactID := n.Input("artifact-id")
+		artifactID, _ := n.Input("artifact-id")
 		n.Output("artifact-host", fmt.Sprintf("%s:host1", artifactID))
 		return nil
 	})
