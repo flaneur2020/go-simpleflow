@@ -11,8 +11,15 @@ type NodeFunc func(context.Context, FlowNode) error
 
 type FlowNode interface {
 	Key() string
+
+	// Input reads the data stored inside the Flow store. The
+	// data has to be JSON serializable.
 	Input(key string, v interface{}) error
-	Output(key string, d interface{}) error
+
+	// Output stores a JSON serializable object into the Node's
+	// output buffer with a unique key, the depending funcs can
+	// get these values by the Input() method.
+	Output(key string, d interface{})
 }
 
 type node struct {
@@ -56,7 +63,7 @@ func (n *node) Input(key string, v interface{}) error {
 	return json.Unmarshal(buf, v)
 }
 
-func (n *node) Output(key string, d interface{}) error {
+func (n *node) Output(key string, d interface{}) {
 	n.flow.mu.Lock()
 	defer n.flow.mu.Unlock()
 
@@ -66,10 +73,9 @@ func (n *node) Output(key string, d interface{}) error {
 
 	buf, err := json.Marshal(d)
 	if err != nil {
-		return err
+		panic(err)
 	}
 	n.outputs[key] = buf
-	return nil
 }
 
 type Flow struct {
@@ -99,8 +105,13 @@ func (fl *Flow) Node(key string, deps []string, fn NodeFunc) {
 }
 
 func (fl *Flow) Start(ctx context.Context, args map[string]interface{}) []string {
+	var err error
+
 	for argKey, arg := range args {
-		fl.data[argKey], _ = json.Marshal(arg)
+		fl.data[argKey], err = json.Marshal(arg)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	// find the funcs with no depend to execute
