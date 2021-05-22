@@ -1,6 +1,7 @@
 package simpleflow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -35,6 +36,48 @@ func Test_flow_Step(t *testing.T) {
 	assert.Contains(t, gotKeys, "n2")
 	assert.Contains(t, gotKeys, "n3")
 	gotKeys = fl.Step(ctx)
+	assert.Equal(t, []string{"n4"}, gotKeys)
+}
+
+func Test_flow_Step_with_persist(t *testing.T) {
+	newFlow := func() *Flow {
+		fl := New()
+		fl.Node("n1", []string{}, func(ctx context.Context, n FlowNode) error {
+			n.Output("n1-executed", true)
+			return nil
+		})
+		fl.Node("n2", []string{"n1"}, func(ctx context.Context, n FlowNode) error {
+			n.Output("n2-executed", true)
+			return nil
+		})
+		fl.Node("n3", []string{"n1"}, func(ctx context.Context, n FlowNode) error {
+			n.Output("n3-executed", true)
+			return nil
+		})
+		fl.Node("n4", []string{"n2", "n3"}, func(ctx context.Context, n FlowNode) error {
+			n.Output("n4-executed", true)
+			return nil
+		})
+		return fl
+	}
+
+	var (
+		buf = bytes.NewBuffer([]byte{})
+		ctx = context.TODO()
+	)
+
+	fl1 := newFlow()
+	gotKeys := fl1.Start(ctx, map[string]interface{}{})
+
+	fl1.Encode(buf)
+	fl2 := newFlow()
+	fl2.Decode(buf)
+
+	assert.Equal(t, []string{"n1"}, gotKeys)
+	gotKeys = fl2.Step(ctx)
+	assert.Contains(t, gotKeys, "n2")
+	assert.Contains(t, gotKeys, "n3")
+	gotKeys = fl2.Step(ctx)
 	assert.Equal(t, []string{"n4"}, gotKeys)
 }
 

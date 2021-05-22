@@ -106,8 +106,10 @@ func (fl *Flow) Decode(r io.Reader) error {
 			return errors.New("persisted nodes corrupted")
 		}
 		n.outputs = pn.Outputs
-		n.err = fmt.Errorf(pn.Err)
 		n.state = pn.State
+		if pn.Err != "" {
+			n.err = fmt.Errorf(pn.Err)
+		}
 	}
 	return nil
 }
@@ -117,10 +119,15 @@ func (fl *Flow) Encode(w io.Writer) error {
 	pf.Data = fl.data
 	pf.Nodes = map[string]*persistNode{}
 	for key, node := range fl.nodes {
+		var errText = ""
+		if node.err != nil {
+			errText = node.err.Error()
+		}
+
 		pf.Nodes[key] = &persistNode{
 			Outputs: node.outputs,
 			State:   node.state,
-			Err:     node.err.Error(),
+			Err:     errText,
 		}
 	}
 	return pf.Encode(w)
