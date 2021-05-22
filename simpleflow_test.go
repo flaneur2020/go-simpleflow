@@ -2,6 +2,7 @@ package simpleflow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -72,7 +73,8 @@ func Test_executableKeys(t *testing.T) {
 	})
 
 	fl.Node("dispatch-artifact", []string{"find-artifact"}, func(ctx context.Context, n RunningNode) error {
-		artifactID, _ := n.Input("artifact-id")
+		var artifactID string
+		n.Input("artifact-id", &artifactID)
 		n.Output("artifact-host", fmt.Sprintf("%s:host1", artifactID))
 		return nil
 	})
@@ -80,6 +82,10 @@ func Test_executableKeys(t *testing.T) {
 	assert.Equal(t, len(fl.executableKeys()), 1)
 	fl.Start(ctx, map[string]interface{}{"deploy-id": 1})
 	fl.Step(ctx)
-	assert.Equal(t, "build-233:host1", fl.nodes["dispatch-artifact"].outputs["artifact-host"])
-	assert.Equal(t, "build-233:host1", fl.data["artifact-host"])
+
+	var got string
+	json.Unmarshal(fl.nodes["dispatch-artifact"].outputs["artifact-host"], &got)
+	assert.Equal(t, "build-233:host1", got)
+	fl.Data("artifact-host", &got)
+	assert.Equal(t, "build-233:host1", got)
 }

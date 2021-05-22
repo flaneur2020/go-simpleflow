@@ -2,6 +2,8 @@ package simpleflow
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"sync"
 )
 
@@ -9,8 +11,8 @@ type NodeFunc func(context.Context, RunningNode) error
 
 type RunningNode interface {
 	Key() string
-	Input(key string) (interface{}, error)
-	Output(key string, d interface{})
+	Input(key string, v interface{}) error
+	Output(key string, d interface{}) error
 }
 
 type node struct {
@@ -19,7 +21,7 @@ type node struct {
 	fn      NodeFunc
 	state   string
 	deps    []string
-	outputs map[string]interface{}
+	outputs map[string][]byte
 	err     error
 }
 
@@ -43,26 +45,35 @@ func (n *node) Key() string {
 	return n.key
 }
 
-func (n *node) Input(key string) (interface{}, error) {
+func (n *node) Input(key string, v interface{}) error {
 	n.flow.mu.Lock()
 	defer n.flow.mu.Unlock()
 
-	d, _ := n.flow.data[key]
-	return d, nil
+	buf, exists := n.flow.data[key]
+	if !exists {
+		return errors.New("input not found")
+	}
+	return json.Unmarshal(buf, v)
 }
 
-func (n *node) Output(key string, d interface{}) {
+func (n *node) Output(key string, d interface{}) error {
 	n.flow.mu.Lock()
 	defer n.flow.mu.Unlock()
 
 	if n.state == nodeCompleted {
 		panic("can not Put to a completed node")
 	}
-	n.outputs[key] = d
+
+	buf, err := json.Marshal(d)
+	if err != nil {
+		return err
+	}
+	n.outputs[key] = buf
+	return nil
 }
 
 type Flow struct {
-	data  map[string]interface{}
+	data  map[string][]byte
 	nodes map[string]*node
 	mu    sync.Mutex
 }
@@ -70,7 +81,7 @@ type Flow struct {
 func New() *Flow {
 	return &Flow{
 		nodes: map[string]*node{},
-		data:  map[string]interface{}{},
+		data:  map[string][]byte{},
 	}
 }
 
@@ -81,7 +92,7 @@ func (fl *Flow) Node(key string, deps []string, fn NodeFunc) {
 		state:   nodePending,
 		fn:      fn,
 		deps:    deps,
-		outputs: map[string]interface{}{},
+		outputs: map[string][]byte{},
 		err:     nil,
 	}
 	fl.nodes[key] = n
@@ -89,7 +100,7 @@ func (fl *Flow) Node(key string, deps []string, fn NodeFunc) {
 
 func (fl *Flow) Start(ctx context.Context, args map[string]interface{}) []string {
 	for argKey, arg := range args {
-		fl.data[argKey] = arg
+		fl.data[argKey], _ = json.Marshal(arg)
 	}
 
 	// find the funcs with no depend to execute
@@ -124,9 +135,13 @@ func (fl *Flow) EOF() bool {
 	return len(fl.executableKeys()) == 0
 }
 
-func (fl *Flow) Data(key string) (interface{}, bool) {
-	d, exists := fl.data[key]
-	return d, exists
+func (fl *Flow) Data(key string, v interface{}) error {
+	buf, exists := fl.data[key]
+	if !exists {
+		return errors.New("data not found")
+	}
+
+	return json.Unmarshal(buf, v)
 }
 
 func (fl *Flow) Step(ctx context.Context) []string {
