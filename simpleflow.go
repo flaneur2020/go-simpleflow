@@ -7,9 +7,9 @@ import (
 	"sync"
 )
 
-type NodeFunc func(context.Context, RunningNode) error
+type NodeFunc func(context.Context, FlowNode) error
 
-type RunningNode interface {
+type FlowNode interface {
 	Key() string
 	Input(key string, v interface{}) error
 	Output(key string, d interface{}) error
@@ -25,7 +25,7 @@ type node struct {
 	err     error
 }
 
-var _ RunningNode = &node{}
+var _ FlowNode = &node{}
 
 const (
 	nodePending   = "pending"
