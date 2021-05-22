@@ -129,17 +129,25 @@ func (fl *Flow) Start(ctx context.Context, args map[string]interface{}) []string
 }
 
 func (fl *Flow) executeFunc(ctx context.Context, key string) {
+	fl.mu.Lock()
 	n, exists := fl.nodes[key]
 	if !exists || n.completed() {
+		fl.mu.Unlock()
 		return
 	}
-
 	n.state = nodeRunning
-	n.err = n.fn(ctx, n)
+	fl.mu.Unlock()
+
+	// release lock while executing user func
+	err := n.fn(ctx, n)
+
+	fl.mu.Lock()
+	n.err = err
 	n.state = nodeCompleted
 	for outputKey, output := range n.outputs {
 		fl.data[outputKey] = output
 	}
+	fl.mu.Unlock()
 }
 
 func (fl *Flow) EOF() bool {
@@ -158,9 +166,15 @@ func (fl *Flow) Data(key string, v interface{}) error {
 func (fl *Flow) Step(ctx context.Context) []string {
 	keys := fl.executableKeys()
 
+	wg := sync.WaitGroup{}
 	for _, key := range keys {
-		fl.executeFunc(ctx, key)
+		wg.Add(1)
+		go func(key string) {
+			fl.executeFunc(ctx, key)
+			wg.Done()
+		}(key)
 	}
+	wg.Wait()
 	return keys
 }
 
