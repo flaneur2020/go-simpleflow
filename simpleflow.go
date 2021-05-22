@@ -62,12 +62,13 @@ func (fl *Flow) Get(key string) interface{} {
 }
 
 func (fl *Flow) executeFunc(ctx context.Context, key string) {
-	result := &NodeResult{
+	result := NodeResult{
 		outputs: map[string]interface{}{},
 		err:     nil,
 	}
 	f := fl.funcs[key]
-	result.err = f(ctx, fl, result)
+	result.err = f(ctx, fl, &result)
+	fl.results[key] = result
 	for outputKey, output := range result.outputs {
 		fl.state[outputKey] = output
 	}
