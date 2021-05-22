@@ -2,20 +2,22 @@ package simpleflow
 
 import (
 	"context"
-	"log"
+	"sync"
 )
 
 type NodeFunc func(context.Context, RunningNode) error
 
 type RunningNode interface {
-	Get(key string) interface{}
-	Put(key string, d interface{})
+	Key() string
+	Input(key string) interface{}
+	Output(key string, d interface{})
 }
 
 type node struct {
 	flow    *Flow
-	state   string
+	key     string
 	fn      NodeFunc
+	state   string
 	deps    []string
 	outputs map[string]interface{}
 	err     error
@@ -33,12 +35,26 @@ func (n *node) completed() bool {
 	return n.state == nodeCompleted
 }
 
-func (n *node) Get(key string) interface{} {
-	d, _ := n.flow.state[key]
+func (n *node) success() bool {
+	return n.completed() && n.err == nil
+}
+
+func (n *node) Key() string {
+	return n.key
+}
+
+func (n *node) Input(key string) interface{} {
+	n.flow.mu.Lock()
+	defer n.flow.mu.Unlock()
+
+	d, _ := n.flow.data[key]
 	return d
 }
 
-func (n *node) Put(key string, d interface{}) {
+func (n *node) Output(key string, d interface{}) {
+	n.flow.mu.Lock()
+	defer n.flow.mu.Unlock()
+
 	if n.state == nodeCompleted {
 		panic("can not Put to a completed node")
 	}
@@ -46,19 +62,21 @@ func (n *node) Put(key string, d interface{}) {
 }
 
 type Flow struct {
-	state map[string]interface{}
+	data  map[string]interface{}
 	nodes map[string]*node
+	mu    sync.Mutex
 }
 
 func New() *Flow {
 	return &Flow{
 		nodes: map[string]*node{},
-		state: map[string]interface{}{},
+		data:  map[string]interface{}{},
 	}
 }
 
 func (fl *Flow) Node(key string, deps []string, fn NodeFunc) {
 	n := &node{
+		key:     key,
 		flow:    fl,
 		state:   nodePending,
 		fn:      fn,
@@ -69,27 +87,27 @@ func (fl *Flow) Node(key string, deps []string, fn NodeFunc) {
 	fl.nodes[key] = n
 }
 
-func (fl *Flow) Start(ctx context.Context, args map[string]interface{}) error {
+func (fl *Flow) Start(ctx context.Context, args map[string]interface{}) []string {
 	for argKey, arg := range args {
-		fl.state[argKey] = arg
+		fl.data[argKey] = arg
 	}
 
 	// find the funcs with no depend to execute
-	keys := fl.executableKeys()
-	log.Printf("start keys=%v", keys)
-	for _, key := range keys {
+	executedKeys := []string{}
+	for _, key := range fl.executableKeys() {
 		n := fl.nodes[key]
 		if len(n.deps) > 0 {
 			continue
 		}
 
 		fl.executeFunc(ctx, key)
+		executedKeys = append(executedKeys, key)
 	}
-	return nil
+	return executedKeys
 }
 
 func (fl *Flow) Get(key string) interface{} {
-	d, _ := fl.state[key]
+	d, _ := fl.data[key]
 	return d
 }
 
@@ -99,12 +117,11 @@ func (fl *Flow) executeFunc(ctx context.Context, key string) {
 		return
 	}
 
-	log.Printf("execute %s", key)
 	n.state = nodeRunning
 	n.err = n.fn(ctx, n)
 	n.state = nodeCompleted
 	for outputKey, output := range n.outputs {
-		fl.state[outputKey] = output
+		fl.data[outputKey] = output
 	}
 }
 
@@ -112,28 +129,29 @@ func (fl *Flow) EOF() bool {
 	return len(fl.executableKeys()) == 0
 }
 
-func (fl *Flow) Step(ctx context.Context) {
+func (fl *Flow) Step(ctx context.Context) []string {
 	keys := fl.executableKeys()
 
-	log.Printf("step keys=%v", keys)
 	for _, key := range keys {
 		fl.executeFunc(ctx, key)
 	}
+	return keys
 }
 
 func (fl *Flow) executableKeys() []string {
-	// find the nodes not completed yet
 	resultKeys := []string{}
 	for key, n := range fl.nodes {
+		// skip the completed nodes
 		if n.completed() {
 			continue
 		}
 
+		// select the nodes whose all the deps has got successful
 		depsOK := true
 		if len(n.deps) > 0 {
 			for _, dep := range n.deps {
 				dn, exists := fl.nodes[dep]
-				if !exists || !dn.completed() {
+				if !exists || !dn.success() {
 					depsOK = false
 				}
 			}
