@@ -13,7 +13,16 @@ type Flow struct {
 	funcs   map[string]NodeFunc
 	depends map[string][]string
 	results map[string]NodeResult
-	args    map[string]byte
+	args    map[string][]byte
+}
+
+func New() *Flow {
+	return &Flow{
+		funcs:   map[string]NodeFunc{},
+		depends: map[string][]string{},
+		results: map[string]NodeResult{},
+		args:    map[string][]byte{},
+	}
 }
 
 func (fl *Flow) Node(key string, depends []string, nf NodeFunc) {
