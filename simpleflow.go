@@ -2,26 +2,40 @@ package simpleflow
 
 import "context"
 
-type NodeFunc func(context.Context, map[string][]byte) ([]byte, error)
+type NodeFunc func(context.Context, NodeInput, NodeOutput) error
+
+type NodeInput interface {
+	Get(key string) interface{}
+}
+
+type NodeOutput interface {
+	Put(key string, d interface{})
+}
 
 type NodeResult struct {
-	r   []byte
-	err error
+	outputs map[string]interface{}
+	err     error
+}
+
+var n NodeOutput = &NodeResult{}
+
+func (r *NodeResult) Put(key string, d interface{}) {
+	r.outputs[key] = d
 }
 
 type Flow struct {
 	funcs   map[string]NodeFunc
 	depends map[string][]string
+	state   map[string]interface{}
 	results map[string]NodeResult
-	args    map[string][]byte
 }
 
 func New() *Flow {
 	return &Flow{
 		funcs:   map[string]NodeFunc{},
 		depends: map[string][]string{},
+		state:   map[string]interface{}{},
 		results: map[string]NodeResult{},
-		args:    map[string][]byte{},
 	}
 }
 
@@ -30,23 +44,33 @@ func (fl *Flow) Node(key string, depends []string, nf NodeFunc) {
 	fl.depends[key] = depends
 }
 
-func (fl *Flow) Start(ctx context.Context, args map[string][]byte) error {
+func (fl *Flow) Start(ctx context.Context, args map[string]interface{}) error {
+	for argKey, arg := range args {
+		fl.state[argKey] = arg
+	}
 	// find the funcs with no depend to execute
-	keys := []string{}
-	for key := range fl.funcs {
-		deps, _ := fl.depends[key]
-		if deps == nil || len(deps) == 0 {
-			keys = append(keys, key)
-		}
-	}
-
+	keys := fl.executableKeys()
 	for _, key := range keys {
-		f := fl.funcs[key]
-		r, err := f(ctx, args)
-		fl.results[key] = NodeResult{r, err}
+		fl.executeFunc(ctx, key)
 	}
-
 	return nil
+}
+
+func (fl *Flow) Get(key string) interface{} {
+	d, _ := fl.state[key]
+	return d
+}
+
+func (fl *Flow) executeFunc(ctx context.Context, key string) {
+	result := &NodeResult{
+		outputs: map[string]interface{}{},
+		err:     nil,
+	}
+	f := fl.funcs[key]
+	result.err = f(ctx, fl, result)
+	for outputKey, output := range result.outputs {
+		fl.state[outputKey] = output
+	}
 }
 
 func (fl *Flow) EOF() bool {
@@ -57,16 +81,7 @@ func (fl *Flow) Step(ctx context.Context) {
 	keys := fl.executableKeys()
 
 	for _, key := range keys {
-		args := map[string][]byte{}
-		if deps, _ := fl.depends[key]; deps != nil {
-			for _, dep := range deps {
-				args[dep] = fl.results[dep].r
-			}
-		}
-
-		f := fl.funcs[key]
-		r, err := f(ctx, args)
-		fl.results[key] = NodeResult{r, err}
+		fl.executeFunc(ctx, key)
 	}
 }
 
