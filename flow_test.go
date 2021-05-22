@@ -48,7 +48,7 @@ func Test_flow_Step_with_persist(t *testing.T) {
 		})
 		fl.Node("n2", []string{"n1"}, func(ctx context.Context, n FlowNode) error {
 			n.Output("n2-executed", true)
-			return nil
+			return errors.New("oh no")
 		})
 		fl.Node("n3", []string{"n1"}, func(ctx context.Context, n FlowNode) error {
 			n.Output("n3-executed", true)
@@ -77,8 +77,14 @@ func Test_flow_Step_with_persist(t *testing.T) {
 	gotKeys = fl2.Step(ctx)
 	assert.Contains(t, gotKeys, "n2")
 	assert.Contains(t, gotKeys, "n3")
-	gotKeys = fl2.Step(ctx)
-	assert.Equal(t, []string{"n4"}, gotKeys)
+
+	buf = bytes.NewBuffer([]byte{})
+	fl2.Encode(buf)
+	fl3 := newFlow()
+	fl3.Decode(buf)
+
+	gotKeys = fl3.Step(ctx)
+	assert.Equal(t, []string{}, gotKeys)
 }
 
 func Test_flow_Step2(t *testing.T) {
