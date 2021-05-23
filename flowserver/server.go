@@ -3,29 +3,10 @@ package flowserver
 import (
 	"bytes"
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
 	"github.com/flaneur2020/go-simpleflow/simpleflow"
 )
-
-var (
-	errFlowNotFound = errors.New("flow not found")
-)
-
-type ServerError struct {
-	kind string
-	err  error
-}
-
-func (e *ServerError) Error() string {
-	return fmt.Sprintf("%s: %s", e.kind, e.err)
-}
-
-func newUnexpectedError(err error) *ServerError {
-	return &ServerError{kind: "unexpected", err: err}
-}
 
 type Server struct {
 	storage        Storage
@@ -34,16 +15,6 @@ type Server struct {
 }
 
 type JobID string
-
-type Storage interface {
-	PopJob(limit int) []JobID
-
-	Enqueue(buf []byte) (JobID, error)
-
-	Update(jobID JobID, state string, buf []byte) error
-
-	Load(jobID JobID) (string, []byte, error)
-}
 
 func New(storage Storage) *Server {
 	return &Server{
