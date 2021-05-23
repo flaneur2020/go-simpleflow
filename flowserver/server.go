@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/flaneur2020/go-simpleflow"
+	"github.com/flaneur2020/go-simpleflow/simpleflow"
 )
 
 var (
