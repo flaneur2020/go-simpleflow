@@ -69,7 +69,7 @@ func Test_flow_Step_with_persist(t *testing.T) {
 	fl1 := newFlow()
 	gotKeys := fl1.Start(ctx, map[string]interface{}{})
 
-	fl1.Encode(buf)
+	fl1.EncodeTo(buf)
 	fl2 := newFlow()
 	fl2.Decode(buf)
 
@@ -79,7 +79,7 @@ func Test_flow_Step_with_persist(t *testing.T) {
 	assert.Contains(t, gotKeys, "n3")
 
 	buf = bytes.NewBuffer([]byte{})
-	fl2.Encode(buf)
+	fl2.EncodeTo(buf)
 	fl3 := newFlow()
 	fl3.Decode(buf)
 

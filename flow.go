@@ -1,6 +1,7 @@
 package simpleflow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -93,6 +94,11 @@ func New() *Flow {
 	}
 }
 
+func (fl *Flow) State() string {
+	// TODO
+	return ""
+}
+
 func (fl *Flow) Decode(r io.Reader) error {
 	pf := persistFlow{}
 	err := pf.Decode(r)
@@ -114,7 +120,13 @@ func (fl *Flow) Decode(r io.Reader) error {
 	return nil
 }
 
-func (fl *Flow) Encode(w io.Writer) error {
+func (fl *Flow) Encode() ([]byte, error) {
+	buf := bytes.NewBuffer([]byte{})
+	err := fl.EncodeTo(buf)
+	return buf.Bytes(), err
+}
+
+func (fl *Flow) EncodeTo(w io.Writer) error {
 	pf := persistFlow{}
 	pf.Data = fl.data
 	pf.Nodes = map[string]*persistNode{}
@@ -144,6 +156,20 @@ func (fl *Flow) Node(key string, deps []string, fn NodeFunc) {
 		err:     nil,
 	}
 	fl.nodes[key] = n
+}
+
+func (fl *Flow) Prepare(args map[string]interface{}) {
+	if len(fl.data) > 0 {
+		panic("flow has already been prepared")
+	}
+
+	var err error
+	for argKey, arg := range args {
+		fl.data[argKey], err = json.Marshal(arg)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func (fl *Flow) Start(ctx context.Context, args map[string]interface{}) []string {
